@@ -1,0 +1,5 @@
+# Ignore all .lua files
+*.lua
+
+# Except score_calculator.lua
+!score_calculator.lua
