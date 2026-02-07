@@ -12,16 +12,15 @@ G.FUNCS.calculate_score_button = function(e)
         return
     end
     
-    -- Get highlighted cards (simulate them being in G.play)
-    local scoring_hand = {}
-    local simulated_play = {}
+    -- Get highlighted cards
+    local highlighted_cards = {}
     for k, v in ipairs(G.hand.cards) do
         if v.highlighted then
-            table.insert(simulated_play, v)
+            table.insert(highlighted_cards, v)
         end
     end
     
-    if #simulated_play == 0 then
+    if #highlighted_cards == 0 then
         play_sound('button')
         card_eval_status_text(e.config.ref_table or G.play, 'extra', nil, nil, nil, {
             message = "Select cards first!",
@@ -30,92 +29,24 @@ G.FUNCS.calculate_score_button = function(e)
         return
     end
     
-    -- Use the game's actual poker hand detection
-    local text, disp_text, poker_hands, scoring_hand, non_loc_disp_text = G.FUNCS.get_poker_hand_info(simulated_play)
+    -- Use the actual game's scoring function (without side effects)
+    local hand_chips, mult, final_score, text, disp_text = G.FUNCS.calculate_hand_score_only(highlighted_cards)
     
-    -- Start with base hand values
-    local mult = mod_mult(G.GAME.hands[text].mult)
-    local hand_chips = mod_chips(G.GAME.hands[text].chips)
+    calculated_score = final_score
     
-    -- Check if hand is debuffed
-    if G.GAME.blind:debuff_hand(simulated_play, poker_hands, text) then
+    if final_score == 0 then
         play_sound('chips1')
         card_eval_status_text(e.config.ref_table or G.play, 'extra', nil, nil, nil, {
             message = "Debuffed! Score: 0",
             colour = G.C.RED
         })
-        return
+    else
+        play_sound('chips1')
+        card_eval_status_text(e.config.ref_table or G.play, 'extra', nil, nil, nil, {
+            message = disp_text .. ": " .. number_format(hand_chips) .. " X " .. number_format(mult) .. " = " .. number_format(final_score),
+            colour = G.C.MULT
+        })
     end
-    
-    -- Add stone cards to scoring hand (like the real function does)
-    local pures = {}
-    for i=1, #simulated_play do
-        if next(find_joker('Splash')) then
-            scoring_hand[i] = simulated_play[i]
-        else
-            if simulated_play[i].ability.effect == 'Stone Card' then
-                local inside = false
-                for j=1, #scoring_hand do
-                    if scoring_hand[j] == simulated_play[i] then
-                        inside = true
-                    end
-                end
-                if not inside then table.insert(pures, simulated_play[i]) end
-            end
-        end
-    end
-    for i=1, #pures do
-        table.insert(scoring_hand, pures[i])
-    end
-    
-    -- Calculate card chips and mults (simplified version of game logic)
-    for i=1, #scoring_hand do
-        if not scoring_hand[i].debuff then
-            -- Get base card effects
-            local effects = {eval_card(scoring_hand[i], {cardarea = G.play, full_hand = simulated_play, scoring_hand = scoring_hand, poker_hand = text})}
-            
-            -- Add joker individual card effects
-            for k=1, #G.jokers.cards do
-                local eval = G.jokers.cards[k]:calculate_joker({cardarea = G.play, full_hand = simulated_play, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, other_card = scoring_hand[i], individual = true})
-                if eval then 
-                    table.insert(effects, eval)
-                end
-            end
-            
-            -- Apply effects
-            for ii = 1, #effects do
-                if effects[ii].chips then 
-                    hand_chips = mod_chips(hand_chips + effects[ii].chips)
-                end
-                if effects[ii].mult then 
-                    mult = mod_mult(mult + effects[ii].mult)
-                end
-                if effects[ii].x_mult then 
-                    mult = mod_mult(mult*effects[ii].x_mult)
-                end
-            end
-        end
-    end
-    
-    -- Calculate joker main effects
-    for i=1, #G.jokers.cards do
-        local effects = eval_card(G.jokers.cards[i], {cardarea = G.jokers, full_hand = simulated_play, scoring_hand = scoring_hand, scoring_name = text, poker_hands = poker_hands, joker_main = true})
-        if effects.jokers then 
-            if effects.jokers.mult_mod then mult = mod_mult(mult + effects.jokers.mult_mod) end
-            if effects.jokers.chip_mod then hand_chips = mod_chips(hand_chips + effects.jokers.chip_mod) end
-            if effects.jokers.Xmult_mod then mult = mod_mult(mult*effects.jokers.Xmult_mod) end
-        end
-    end
-    
-    -- Final score
-    local final_score = hand_chips * mult
-    calculated_score = final_score
-    
-    play_sound('chips1')
-    card_eval_status_text(e.config.ref_table or G.play, 'extra', nil, nil, nil, {
-        message = number_format(hand_chips) .. " X " .. number_format(mult) .. " = " .. number_format(final_score),
-        colour = G.C.MULT
-    })
 end
 
 -- Hook into update_selecting_hand to create our button
